@@ -3,11 +3,102 @@ const AppState = {
     attendees: [],
     states: {}, // 각 참석자의 상태를 저장 (0, 1, 2, 3, 'x')
     maxCells: 30,
+    audioContext: null,
     
     init() {
         this.loadFromStorage();
+        this.initAudio();
         this.renderGrid();
         this.setupEventListeners();
+    },
+    
+    // 오디오 초기화
+    initAudio() {
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('Web Audio API를 지원하지 않는 브라우저입니다.');
+        }
+    },
+    
+    // 강아지 짖는 소리 재생 (멍멍)
+    playBarkSound() {
+        // 강아지 아이콘 애니메이션
+        const dogIcon = document.getElementById('dogIcon');
+        const barkText = document.getElementById('barkText');
+        
+        if (dogIcon) {
+            dogIcon.classList.add('bark-animation');
+            setTimeout(() => {
+                dogIcon.classList.remove('bark-animation');
+            }, 400);
+        }
+        
+        // 멍멍 텍스트 표시
+        if (barkText) {
+            barkText.classList.add('show');
+            setTimeout(() => {
+                barkText.classList.remove('show');
+            }, 800);
+        }
+        
+        // 오디오 파일이 있으면 재생, 없으면 웹 오디오 API로 멍멍 소리 생성
+        const audioFile = new Audio();
+        audioFile.src = 'bark.mp3';
+        audioFile.volume = 0.7;
+        
+        audioFile.play().catch(() => {
+            // 파일이 없거나 재생 실패 시 웹 오디오 API로 멍멍 소리 생성
+            this.generateBarkSound();
+        });
+    },
+    
+    // 웹 오디오 API로 멍멍 소리 생성
+    generateBarkSound() {
+        if (!this.audioContext) {
+            this.initAudio();
+        }
+        
+        if (!this.audioContext) return;
+        
+        const currentTime = this.audioContext.currentTime;
+        
+        // 첫 번째 "멍"
+        this.playSingleBark(currentTime, 600, 0.15);
+        
+        // 두 번째 "멍" (약간 더 높은 음으로)
+        this.playSingleBark(currentTime + 0.2, 700, 0.15);
+    },
+    
+    // 개별 멍 소리 생성
+    playSingleBark(startTime, frequency, duration) {
+        const oscillator1 = this.audioContext.createOscillator();
+        const oscillator2 = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        // 멍 소리를 위한 주파수 설정
+        oscillator1.type = 'sawtooth';
+        oscillator1.frequency.setValueAtTime(frequency, startTime);
+        oscillator1.frequency.exponentialRampToValueAtTime(frequency * 0.6, startTime + duration * 0.5);
+        oscillator1.frequency.exponentialRampToValueAtTime(frequency * 0.8, startTime + duration);
+        
+        oscillator2.type = 'sawtooth';
+        oscillator2.frequency.setValueAtTime(frequency * 1.5, startTime);
+        oscillator2.frequency.exponentialRampToValueAtTime(frequency * 0.9, startTime + duration * 0.5);
+        oscillator2.frequency.exponentialRampToValueAtTime(frequency * 1.2, startTime + duration);
+        
+        gainNode.gain.setValueAtTime(0.4, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.1, startTime + duration * 0.7);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator1.connect(gainNode);
+        oscillator2.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator1.start(startTime);
+        oscillator2.start(startTime);
+        oscillator1.stop(startTime + duration);
+        oscillator2.stop(startTime + duration);
     },
     
     // 로컬 스토리지에서 데이터 로드
@@ -39,32 +130,67 @@ const AppState = {
         localStorage.setItem('busAttendeeStates', JSON.stringify(this.states));
     },
     
+    // 통계 업데이트
+    updateDashboard() {
+        let attendanceCount = 0; // 상태 1 (빨강) - 참석
+        let absenceCount = 0; // 상태 2, 3, X - 불참
+        
+        for (let i = 0; i < this.maxCells; i++) {
+            if (this.attendees[i]) {
+                const state = this.states[i] || 0;
+                if (state === 1) {
+                    attendanceCount++;
+                } else if (state === 2 || state === 3 || state === 'x') {
+                    absenceCount++;
+                }
+            }
+        }
+        
+        document.getElementById('attendanceCount').textContent = attendanceCount;
+        document.getElementById('absenceCount').textContent = absenceCount;
+    },
+    
     // 그리드 렌더링
     renderGrid() {
         const grid = document.getElementById('attendeesGrid');
         grid.innerHTML = '';
         
-        for (let i = 0; i < this.maxCells; i++) {
-            const cell = document.createElement('div');
-            cell.className = 'attendee-cell';
-            cell.dataset.index = i;
-            
-            const name = this.attendees[i] || '';
-            const state = this.states[i] || 0;
-            
-            if (!name) {
-                cell.classList.add('empty');
-                cell.textContent = '';
-            } else {
-                cell.textContent = name;
-                cell.classList.add(`state-${state}`);
+        // 세로 순서로 채우기: 3열 10행 그리드에서 세로 방향으로
+        // 첫 번째 열: 0, 10, 20, ..., 27
+        // 두 번째 열: 1, 11, 21, ..., 28
+        // 세 번째 열: 2, 12, 22, ..., 29
+        const cols = 3;
+        const rows = 10;
+        
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                // 세로 순서로 데이터 인덱스 계산: col * rows + row
+                const dataIndex = col * rows + row;
+                
+                const cell = document.createElement('div');
+                cell.className = 'attendee-cell';
+                cell.dataset.index = dataIndex;
+                
+                const name = this.attendees[dataIndex] || '';
+                const state = this.states[dataIndex] || 0;
+                
+                if (!name) {
+                    cell.classList.add('empty');
+                    cell.textContent = '';
+                } else {
+                    cell.textContent = name;
+                    cell.classList.add(`state-${state}`);
+                }
+                
+                // 빈 셀도 클릭 가능하게 하되, 상태 변경은 안 됨
+                cell.addEventListener('click', () => this.handleCellClick(dataIndex));
+                
+                grid.appendChild(cell);
             }
-            
-            // 빈 셀도 클릭 가능하게 하되, 상태 변경은 안 됨
-            cell.addEventListener('click', () => this.handleCellClick(i));
-            
-            grid.appendChild(cell);
         }
+        
+        // 대시보드 업데이트
+        this.updateDashboard();
     },
     
     // 셀 클릭 핸들러
@@ -92,6 +218,8 @@ const AppState = {
         
         this.states[index] = nextState;
         this.saveToStorage();
+        this.updateDashboard();
+        this.playBarkSound();
         this.renderGrid();
     },
     
@@ -116,6 +244,18 @@ const AppState = {
         }
         
         this.saveToStorage();
+        this.renderGrid();
+    },
+    
+    // 초기화: 모든 상태를 0으로 리셋
+    resetStates() {
+        for (let i = 0; i < this.maxCells; i++) {
+            if (this.attendees[i]) {
+                this.states[i] = 0;
+            }
+        }
+        this.saveToStorage();
+        this.updateDashboard();
         this.renderGrid();
     },
     
@@ -165,6 +305,11 @@ const AppState = {
         // 가나다 순 정렬 버튼
         document.getElementById('sortBtn').addEventListener('click', () => {
             this.sortByName();
+        });
+        
+        // 초기화 버튼
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            this.resetStates();
         });
         
         // 모달 관련

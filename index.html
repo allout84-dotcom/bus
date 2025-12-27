@@ -12,7 +12,23 @@
     <div class="container">
         <!-- 헤더 -->
         <header class="header">
-            <h1 class="header-title">버스 탑승자 확인</h1>
+            <div class="header-top">
+                <div class="dashboard">
+                    <div class="dashboard-item">
+                        <div class="dashboard-label">참석</div>
+                        <div class="dashboard-value" id="attendanceCount">0</div>
+                    </div>
+                    <div class="dashboard-item">
+                        <div class="dashboard-label">불참</div>
+                        <div class="dashboard-value" id="absenceCount">0</div>
+                    </div>
+                </div>
+                <h1 class="header-title">버스 탑승자 확인</h1>
+                <div class="dog-icon-container">
+                    <div class="dog-icon" id="dogIcon">🐶</div>
+                    <div class="bark-text" id="barkText">멍멍</div>
+                </div>
+            </div>
             <div class="menu-buttons">
                 <button class="menu-btn" id="editAttendeesBtn">
                     <span class="btn-icon">✏️</span>
@@ -21,6 +37,10 @@
                 <button class="menu-btn" id="sortBtn">
                     <span class="btn-icon">🔤</span>
                     가나다 순 정렬
+                </button>
+                <button class="menu-btn" id="resetBtn">
+                    <span class="btn-icon">🔄</span>
+                    초기화
                 </button>
             </div>
         </header>
