@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>버스 탑승자 확인</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <h1 class="header-title">버스 탑승자 확인</h1>
+            <div class="menu-buttons">
+                <button class="menu-btn" id="editAttendeesBtn">
+                    <span class="btn-icon">✏️</span>
+                    참석자 입력
+                </button>
+                <button class="menu-btn" id="sortBtn">
+                    <span class="btn-icon">🔤</span>
+                    가나다 순 정렬
+                </button>
+            </div>
+        </header>
+
+        <!-- 메인 그리드 -->
+        <main class="main-content">
+            <div class="grid-container" id="attendeesGrid">
+                <!-- 셀들이 JavaScript로 동적으로 생성됩니다 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- 참석자 입력 모달 -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>참석자 입력</h2>
+                <button class="close-btn" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="attendeesInput">참석자 성명 (4글자, 콤마로 구분)</label>
+                <textarea 
+                    id="attendeesInput" 
+                    class="attendees-input" 
+                    placeholder="홍길동,김철수,이영희,박민수,최지영..."
+                    rows="5"
+                ></textarea>
+                <p class="help-text">예: 홍길동,김철수,이영희,박민수,최지영</p>
+                <div class="modal-buttons">
+                    <button class="btn-primary" id="saveAttendeesBtn">저장</button>
+                    <button class="btn-secondary" id="cancelBtn">취소</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+
+
+

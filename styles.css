@@ -1,0 +1,383 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 0;
+    margin: 0;
+    color: #333;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 100%;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #f5f5f5;
+}
+
+/* 헤더 */
+.header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    text-align: center;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.menu-buttons {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.menu-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border-radius: 25px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.menu-btn:active {
+    transform: scale(0.95);
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-icon {
+    font-size: 1rem;
+}
+
+/* 메인 컨텐츠 */
+.main-content {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+/* 셀 스타일 */
+.attendee-cell {
+    aspect-ratio: 1;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    user-select: none;
+    -webkit-user-select: none;
+    color: #333;
+    min-height: 80px;
+}
+
+.attendee-cell:active {
+    transform: scale(0.95);
+}
+
+/* 상태별 색상 */
+.attendee-cell.state-0 {
+    background: white;
+    color: #666;
+    border-color: #e0e0e0;
+}
+
+.attendee-cell.state-1 {
+    background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+    color: white;
+    border-color: #84fab0;
+    box-shadow: 0 4px 8px rgba(132, 250, 176, 0.3);
+}
+
+.attendee-cell.state-2 {
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    color: white;
+    border-color: #a8edea;
+    box-shadow: 0 4px 8px rgba(168, 237, 234, 0.3);
+}
+
+.attendee-cell.state-3 {
+    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    color: white;
+    border-color: #ffecd2;
+    box-shadow: 0 4px 8px rgba(255, 236, 210, 0.3);
+}
+
+.attendee-cell.state-x {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+    color: white;
+    border-color: #ff6b6b;
+    box-shadow: 0 4px 8px rgba(255, 107, 107, 0.3);
+}
+
+.attendee-cell.state-x::after {
+    content: '✕';
+    position: absolute;
+    font-size: 2rem;
+    font-weight: bold;
+    opacity: 0.8;
+}
+
+/* 빈 셀 */
+.attendee-cell.empty {
+    background: #f9f9f9;
+    color: #ccc;
+    border-color: #e8e8e8;
+    cursor: default;
+}
+
+.attendee-cell.empty:active {
+    transform: none;
+}
+
+/* 모달 */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    animation: fadeIn 0.3s ease;
+}
+
+.modal.show {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.modal-content {
+    background: white;
+    border-radius: 20px;
+    padding: 0;
+    max-width: 90%;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.3s ease;
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 2rem;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.3s ease;
+}
+
+.close-btn:active {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-body label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95rem;
+}
+
+.attendees-input {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.3s ease;
+    margin-bottom: 0.5rem;
+}
+
+.attendees-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.help-text {
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+.btn-primary,
+.btn-secondary {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-primary:active {
+    transform: scale(0.95);
+    opacity: 0.9;
+}
+
+.btn-secondary {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.btn-secondary:active {
+    transform: scale(0.95);
+    background: #d0d0d0;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 480px) {
+    .header-title {
+        font-size: 1.3rem;
+    }
+
+    .menu-btn {
+        font-size: 0.85rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .grid-container {
+        gap: 0.5rem;
+    }
+
+    .attendee-cell {
+        font-size: 0.8rem;
+        min-height: 70px;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    .grid-container {
+        gap: 0.65rem;
+    }
+
+    .attendee-cell {
+        min-height: 90px;
+    }
+}
+
+@media (min-width: 769px) {
+    .container {
+        max-width: 800px;
+        margin: 0 auto;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .grid-container {
+        gap: 1rem;
+    }
+
+    .attendee-cell {
+        min-height: 100px;
+        font-size: 1rem;
+    }
+}
+
+
+
+
