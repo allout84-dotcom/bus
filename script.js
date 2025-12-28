@@ -12,16 +12,26 @@ const AppState = {
         this.setupEventListeners();
     },
     
-    // 오디오 초기화
+    // 오디오 초기화 및 즉시 활성화
     initAudio() {
         try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // 오디오 컨텍스트를 즉시 활성화하여 지연 방지
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+            // 사용자 인터랙션으로 활성화
+            document.addEventListener('click', () => {
+                if (this.audioContext && this.audioContext.state === 'suspended') {
+                    this.audioContext.resume();
+                }
+            }, { once: true });
         } catch (e) {
             console.log('Web Audio API를 지원하지 않는 브라우저입니다.');
         }
     },
     
-    // 강아지 짖는 소리 재생 (멍멍)
+    // 캔 음료수 따는 소리 재생
     playBarkSound() {
         // 강아지 아이콘 애니메이션
         const dogIcon = document.getElementById('dogIcon');
@@ -42,63 +52,127 @@ const AppState = {
             }, 800);
         }
         
-        // 오디오 파일이 있으면 재생, 없으면 웹 오디오 API로 멍멍 소리 생성
-        const audioFile = new Audio();
-        audioFile.src = 'bark.mp3';
-        audioFile.volume = 0.7;
+        // 오디오 컨텍스트 활성화 (지연 방지)
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
         
-        audioFile.play().catch(() => {
-            // 파일이 없거나 재생 실패 시 웹 오디오 API로 멍멍 소리 생성
-            this.generateBarkSound();
-        });
+        // 오디오 파일이 있으면 재생, 없으면 웹 오디오 API로 캔 따는 소리 생성
+        const audioFile = new Audio();
+        audioFile.src = 'can-open.mp3';
+        audioFile.volume = 0.6;
+        audioFile.preload = 'auto';
+        
+        // 즉시 재생 시도
+        const playPromise = audioFile.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(() => {
+                // 파일이 없거나 재생 실패 시 웹 오디오 API로 캔 따는 소리 생성
+                this.generateCanOpenSound();
+            });
+        } else {
+            this.generateCanOpenSound();
+        }
     },
     
-    // 웹 오디오 API로 멍멍 소리 생성
-    generateBarkSound() {
+    // 웹 오디오 API로 캔 음료수 따는 소리 생성
+    generateCanOpenSound() {
         if (!this.audioContext) {
             this.initAudio();
         }
         
         if (!this.audioContext) return;
         
+        // 오디오 컨텍스트 활성화
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+        
         const currentTime = this.audioContext.currentTime;
         
-        // 첫 번째 "멍"
-        this.playSingleBark(currentTime, 600, 0.15);
+        // 1. "딸각" 소리 (금속 충돌)
+        this.playClickSound(currentTime, 2000, 0.02);
         
-        // 두 번째 "멍" (약간 더 높은 음으로)
-        this.playSingleBark(currentTime + 0.2, 700, 0.15);
+        // 2. "쉬익" 소리 (가스 방출)
+        this.playHissSound(currentTime + 0.01, 0.15);
+        
+        // 3. "팝" 소리 (압력 해제)
+        this.playPopSound(currentTime + 0.12, 0.08);
     },
     
-    // 개별 멍 소리 생성
-    playSingleBark(startTime, frequency, duration) {
-        const oscillator1 = this.audioContext.createOscillator();
-        const oscillator2 = this.audioContext.createOscillator();
+    // 딸각 소리 (클릭 소리)
+    playClickSound(startTime, frequency, duration) {
+        const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
         
-        // 멍 소리를 위한 주파수 설정
-        oscillator1.type = 'sawtooth';
-        oscillator1.frequency.setValueAtTime(frequency, startTime);
-        oscillator1.frequency.exponentialRampToValueAtTime(frequency * 0.6, startTime + duration * 0.5);
-        oscillator1.frequency.exponentialRampToValueAtTime(frequency * 0.8, startTime + duration);
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+        oscillator.frequency.exponentialRampToValueAtTime(frequency * 0.3, startTime + duration);
         
-        oscillator2.type = 'sawtooth';
-        oscillator2.frequency.setValueAtTime(frequency * 1.5, startTime);
-        oscillator2.frequency.exponentialRampToValueAtTime(frequency * 0.9, startTime + duration * 0.5);
-        oscillator2.frequency.exponentialRampToValueAtTime(frequency * 1.2, startTime + duration);
-        
-        gainNode.gain.setValueAtTime(0.4, startTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.1, startTime + duration * 0.7);
+        gainNode.gain.setValueAtTime(0.5, startTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
         
-        oscillator1.connect(gainNode);
-        oscillator2.connect(gainNode);
+        oscillator.connect(gainNode);
         gainNode.connect(this.audioContext.destination);
         
-        oscillator1.start(startTime);
-        oscillator2.start(startTime);
-        oscillator1.stop(startTime + duration);
-        oscillator2.stop(startTime + duration);
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+    },
+    
+    // 쉬익 소리 (가스 방출)
+    playHissSound(startTime, duration) {
+        const noiseBuffer = this.createWhiteNoiseBuffer(0.1);
+        const noiseSource = this.audioContext.createBufferSource();
+        const filter = this.audioContext.createBiquadFilter();
+        const gainNode = this.audioContext.createGain();
+        
+        noiseSource.buffer = noiseBuffer;
+        filter.type = 'bandpass';
+        filter.frequency.value = 3000;
+        filter.Q.value = 5;
+        
+        gainNode.gain.setValueAtTime(0.15, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        noiseSource.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        noiseSource.start(startTime);
+        noiseSource.stop(startTime + duration);
+    },
+    
+    // 팝 소리 (압력 해제)
+    playPopSound(startTime, duration) {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(150, startTime);
+        oscillator.frequency.exponentialRampToValueAtTime(80, startTime + duration);
+        
+        gainNode.gain.setValueAtTime(0.4, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+    },
+    
+    // 화이트 노이즈 버퍼 생성 (쉬익 소리용)
+    createWhiteNoiseBuffer(duration) {
+        const sampleRate = this.audioContext.sampleRate;
+        const frameCount = sampleRate * duration;
+        const buffer = this.audioContext.createBuffer(1, frameCount, sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        for (let i = 0; i < frameCount; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        
+        return buffer;
     },
     
     // 로컬 스토리지에서 데이터 로드
@@ -132,22 +206,21 @@ const AppState = {
     
     // 통계 업데이트
     updateDashboard() {
-        let attendanceCount = 0; // 상태 1 (빨강) - 참석
-        let absenceCount = 0; // 상태 2, 3, X - 불참
+        let totalCount = 0; // 전체 인원 (이름이 입력된 사람)
+        let attendanceCount = 0; // 참석 인원 (상태 1 - 빨강)
         
         for (let i = 0; i < this.maxCells; i++) {
             if (this.attendees[i]) {
+                totalCount++;
                 const state = this.states[i] || 0;
                 if (state === 1) {
                     attendanceCount++;
-                } else if (state === 2 || state === 3 || state === 'x') {
-                    absenceCount++;
                 }
             }
         }
         
+        document.getElementById('totalCount').textContent = totalCount;
         document.getElementById('attendanceCount').textContent = attendanceCount;
-        document.getElementById('absenceCount').textContent = absenceCount;
     },
     
     // 그리드 렌더링
@@ -387,6 +460,18 @@ const AppState = {
 // 앱 초기화
 document.addEventListener('DOMContentLoaded', () => {
     AppState.init();
+    
+    // 첫 사용자 인터랙션에서 오디오 컨텍스트 활성화 (지연 방지)
+    const enableAudio = () => {
+        if (AppState.audioContext && AppState.audioContext.state === 'suspended') {
+            AppState.audioContext.resume();
+        }
+    };
+    
+    // 다양한 사용자 인터랙션에서 오디오 활성화
+    document.addEventListener('click', enableAudio, { once: true });
+    document.addEventListener('touchstart', enableAudio, { once: true });
+    document.addEventListener('keydown', enableAudio, { once: true });
 });
 
 // 터치 이벤트 최적화 (모바일)
