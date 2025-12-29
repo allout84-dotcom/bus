@@ -4,6 +4,7 @@ const AppState = {
     states: {}, // 각 참석자의 상태를 저장 (0, 1, 2, 3, 'x')
     maxCells: 30,
     audioContext: null,
+    history: [], // 되돌리기를 위한 상태 이력
     
     init() {
         this.loadFromStorage();
@@ -320,12 +321,58 @@ const AppState = {
         this.renderGrid();
     },
     
+    // 현재 상태를 이력에 저장
+    saveToHistory() {
+        const stateSnapshot = {
+            attendees: JSON.parse(JSON.stringify(this.attendees)),
+            states: JSON.parse(JSON.stringify(this.states))
+        };
+        this.history.push(stateSnapshot);
+        // 이력은 최대 1개만 유지 (마지막 상태만 저장)
+        if (this.history.length > 1) {
+            this.history.shift();
+        }
+    },
+    
+    // 이전 상태로 복원
+    undo() {
+        if (this.history.length === 0) {
+            return; // 복원할 이력이 없음
+        }
+        
+        const previousState = this.history.pop();
+        this.attendees = previousState.attendees;
+        this.states = previousState.states;
+        this.saveToStorage();
+        this.updateDashboard();
+        this.renderGrid();
+    },
+    
     // 초기화: 모든 상태를 0으로 리셋
     resetStates() {
+        // 현재 상태를 이력에 저장
+        this.saveToHistory();
+        
         for (let i = 0; i < this.maxCells; i++) {
             if (this.attendees[i]) {
                 this.states[i] = 0;
             }
+        }
+        this.saveToStorage();
+        this.updateDashboard();
+        this.renderGrid();
+    },
+    
+    // 새로 시작: 모든 참석자와 상태를 초기화
+    newStart() {
+        // 현재 상태를 이력에 저장
+        this.saveToHistory();
+        
+        // 모든 참석자와 상태 초기화
+        this.attendees = Array(this.maxCells).fill('');
+        this.states = {};
+        for (let i = 0; i < this.maxCells; i++) {
+            this.states[i] = 0;
         }
         this.saveToStorage();
         this.updateDashboard();
@@ -383,6 +430,16 @@ const AppState = {
         // 초기화 버튼
         document.getElementById('resetBtn').addEventListener('click', () => {
             this.resetStates();
+        });
+        
+        // 새로 시작 버튼
+        document.getElementById('newStartBtn').addEventListener('click', () => {
+            this.newStart();
+        });
+        
+        // 되돌리기 버튼
+        document.getElementById('undoBtn').addEventListener('click', () => {
+            this.undo();
         });
         
         // 모달 관련
