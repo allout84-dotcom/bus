@@ -181,17 +181,40 @@ const AppState = {
         const savedAttendees = localStorage.getItem('busAttendees');
         const savedStates = localStorage.getItem('busAttendeeStates');
         
-        if (savedAttendees) {
-            this.attendees = JSON.parse(savedAttendees);
-        } else {
-            // 기본값: 빈 배열로 시작
+        // 참석자 데이터 로드 (실패 시 기본값으로 폴백)
+        try {
+            if (savedAttendees) {
+                const parsed = JSON.parse(savedAttendees);
+                if (Array.isArray(parsed) && parsed.length === this.maxCells) {
+                    this.attendees = parsed;
+                } else {
+                    throw new Error('Invalid attendees data shape');
+                }
+            } else {
+                this.attendees = Array(this.maxCells).fill('');
+            }
+        } catch (e) {
+            console.warn('참석자 데이터를 불러올 수 없어 초기화합니다.', e);
             this.attendees = Array(this.maxCells).fill('');
         }
         
-        if (savedStates) {
-            this.states = JSON.parse(savedStates);
-        } else {
-            // 기본 상태: 모든 셀을 0으로 초기화
+        // 상태 데이터 로드 (실패 시 기본값으로 폴백)
+        try {
+            if (savedStates) {
+                const parsed = JSON.parse(savedStates);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    this.states = parsed;
+                } else {
+                    throw new Error('Invalid states data shape');
+                }
+            } else {
+                this.states = {};
+                for (let i = 0; i < this.maxCells; i++) {
+                    this.states[i] = 0;
+                }
+            }
+        } catch (e) {
+            console.warn('상태 데이터를 불러올 수 없어 초기화합니다.', e);
             this.states = {};
             for (let i = 0; i < this.maxCells; i++) {
                 this.states[i] = 0;
@@ -274,6 +297,9 @@ const AppState = {
             return;
         }
         
+        // 현재 상태를 이력에 저장 (되돌리기용)
+        this.saveToHistory();
+        
         const currentState = this.states[index] || 0;
         
         // 상태 순환: 0 -> 1 -> 2 -> 3 -> 'x' -> 0
@@ -288,6 +314,9 @@ const AppState = {
             nextState = 'x';
         } else if (currentState === 'x') {
             nextState = 0;
+        } else {
+            // 예상치 못한 값이면 0으로 복귀
+            nextState = 0;
         }
         
         this.states[index] = nextState;
@@ -299,25 +328,37 @@ const AppState = {
     
     // 참석자 입력
     setAttendees(names) {
-        // 입력받은 이름들을 배열로 변환
-        const nameArray = names
+        // 이전 상태를 이력에 저장 (되돌리기용)
+        this.saveToHistory();
+        
+        // 입력받은 이름들을 분리
+        const rawNames = names
             .split(',')
             .map(name => name.trim())
-            .filter(name => name.length > 0 && name.length <= 4); // 4글자 제한
+            .filter(name => name.length > 0);
         
-        // 30개 셀에 맞춰 배열 초기화
+        // 4글자 초과 이름은 제외하고, 제외된 이름이 있으면 사용자에게 안내
+        const validNames = rawNames.filter(name => name.length <= 4);
+        const droppedNames = rawNames.filter(name => name.length > 4);
+        if (droppedNames.length > 0) {
+            alert(`다음 이름은 4글자를 초과하여 제외되었습니다:\n${droppedNames.join(', ')}`);
+        }
+        
+        // 30개 셀에 맞춰 이름과 상태 모두 완전히 초기화
+        // (이전 사람의 상태가 새 사람에게 남는 문제 방지)
         this.attendees = Array(this.maxCells).fill('');
+        this.states = {};
+        for (let i = 0; i < this.maxCells; i++) {
+            this.states[i] = 0;
+        }
         
         // 이름들을 채워넣기
-        for (let i = 0; i < Math.min(nameArray.length, this.maxCells); i++) {
-            this.attendees[i] = nameArray[i];
-            // 새로운 참석자의 상태를 0으로 초기화
-            if (!(i in this.states)) {
-                this.states[i] = 0;
-            }
+        for (let i = 0; i < Math.min(validNames.length, this.maxCells); i++) {
+            this.attendees[i] = validNames[i];
         }
         
         this.saveToStorage();
+        this.updateDashboard();
         this.renderGrid();
     },
     
@@ -353,10 +394,10 @@ const AppState = {
         // 현재 상태를 이력에 저장
         this.saveToHistory();
         
+        // 모든 셀의 상태를 0으로 초기화 (잔여 데이터 포함)
+        this.states = {};
         for (let i = 0; i < this.maxCells; i++) {
-            if (this.attendees[i]) {
-                this.states[i] = 0;
-            }
+            this.states[i] = 0;
         }
         this.saveToStorage();
         this.updateDashboard();
@@ -381,6 +422,9 @@ const AppState = {
     
     // 가나다 순 정렬
     sortByName() {
+        // 현재 상태를 이력에 저장 (되돌리기용)
+        this.saveToHistory();
+        
         // 이름과 인덱스를 함께 저장
         const nameWithIndex = this.attendees
             .map((name, index) => ({
@@ -442,6 +486,14 @@ const AppState = {
             this.undo();
         });
         
+        // 강아지 아이콘 클릭 시 짖는 소리/애니메이션 재생
+        const dogIcon = document.getElementById('dogIcon');
+        if (dogIcon) {
+            dogIcon.addEventListener('click', () => {
+                this.playBarkSound();
+            });
+        }
+        
         // 모달 관련
         const modal = document.getElementById('editModal');
         const closeBtn = document.getElementById('closeModal');
@@ -498,15 +550,17 @@ const AppState = {
         const names = input.value.trim();
         
         if (names) {
-            this.setAttendees(names);
+            this.setAttendees(names); // setAttendees가 내부적으로 saveToHistory 호출
         } else {
             // 빈 값이면 모든 참석자 제거
+            this.saveToHistory();
             this.attendees = Array(this.maxCells).fill('');
             this.states = {};
             for (let i = 0; i < this.maxCells; i++) {
                 this.states[i] = 0;
             }
             this.saveToStorage();
+            this.updateDashboard();
             this.renderGrid();
         }
         
@@ -533,12 +587,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 터치 이벤트 최적화 (모바일)
 let touchStartTime = 0;
+let lastTouchY = 0;
 document.addEventListener('touchstart', (e) => {
     touchStartTime = Date.now();
+    // 시작점에서 lastTouchY를 초기화해야 첫 touchmove가
+    // 0 기준으로 비교돼서 무조건 preventDefault되는 버그를 방지
+    if (e.touches && e.touches[0]) {
+        lastTouchY = e.touches[0].clientY;
+    }
 }, { passive: true });
 
 // 스크롤 방지 (모바일에서 스크롤이 의도치 않게 발생하는 것 방지)
-let lastTouchY = 0;
 document.addEventListener('touchmove', (e) => {
     const touchY = e.touches[0].clientY;
     const touchTarget = e.target;
@@ -554,7 +613,3 @@ document.addEventListener('touchmove', (e) => {
     }
     lastTouchY = touchY;
 }, { passive: false });
-
-
-
-
