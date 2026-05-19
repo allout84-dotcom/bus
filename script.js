@@ -3,6 +3,11 @@ const AppState = {
     attendees: [],
     states: {}, // 각 참석자의 상태를 저장 (0, 1, 2, 3, 'x')
     maxCells: 30,
+    currentPage: 0,
+    swipeStartX: 0,
+    swipeStartY: 0,
+    swipeStartTime: 0,
+    suppressClickUntil: 0,
     audioContext: null,
     history: [], // 되돌리기를 위한 상태 이력
     
@@ -181,40 +186,17 @@ const AppState = {
         const savedAttendees = localStorage.getItem('busAttendees');
         const savedStates = localStorage.getItem('busAttendeeStates');
         
-        // 참석자 데이터 로드 (실패 시 기본값으로 폴백)
-        try {
-            if (savedAttendees) {
-                const parsed = JSON.parse(savedAttendees);
-                if (Array.isArray(parsed) && parsed.length === this.maxCells) {
-                    this.attendees = parsed;
-                } else {
-                    throw new Error('Invalid attendees data shape');
-                }
-            } else {
-                this.attendees = Array(this.maxCells).fill('');
-            }
-        } catch (e) {
-            console.warn('참석자 데이터를 불러올 수 없어 초기화합니다.', e);
+        if (savedAttendees) {
+            this.attendees = JSON.parse(savedAttendees);
+        } else {
+            // 기본값: 빈 배열로 시작
             this.attendees = Array(this.maxCells).fill('');
         }
         
-        // 상태 데이터 로드 (실패 시 기본값으로 폴백)
-        try {
-            if (savedStates) {
-                const parsed = JSON.parse(savedStates);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                    this.states = parsed;
-                } else {
-                    throw new Error('Invalid states data shape');
-                }
-            } else {
-                this.states = {};
-                for (let i = 0; i < this.maxCells; i++) {
-                    this.states[i] = 0;
-                }
-            }
-        } catch (e) {
-            console.warn('상태 데이터를 불러올 수 없어 초기화합니다.', e);
+        if (savedStates) {
+            this.states = JSON.parse(savedStates);
+        } else {
+            // 기본 상태: 모든 셀을 0으로 초기화
             this.states = {};
             for (let i = 0; i < this.maxCells; i++) {
                 this.states[i] = 0;
@@ -227,13 +209,55 @@ const AppState = {
         localStorage.setItem('busAttendees', JSON.stringify(this.attendees));
         localStorage.setItem('busAttendeeStates', JSON.stringify(this.states));
     },
+
+    // 입력된 참석자 수
+    getFilledCount() {
+        return this.attendees.filter(name => name).length;
+    },
+
+    // 한 화면당 30명씩 보여주고, 마지막 화면이 꽉 차면 다음 빈 화면을 준비
+    getPageCount() {
+        const filledCount = this.getFilledCount();
+        if (filledCount === 0) {
+            return 1;
+        }
+
+        const pages = Math.ceil(filledCount / this.maxCells);
+        return filledCount % this.maxCells === 0 ? pages + 1 : pages;
+    },
+
+    clampCurrentPage() {
+        const pageCount = this.getPageCount();
+        this.currentPage = Math.min(Math.max(this.currentPage, 0), pageCount - 1);
+    },
+
+    updatePageIndicator() {
+        const indicator = document.getElementById('pageIndicator');
+        if (!indicator) return;
+
+        const pageCount = this.getPageCount();
+        indicator.textContent = `${this.currentPage + 1} / ${pageCount}`;
+    },
+
+    changePage(direction) {
+        const pageCount = this.getPageCount();
+        const nextPage = this.currentPage + direction;
+
+        if (nextPage < 0 || nextPage >= pageCount) {
+            return;
+        }
+
+        this.currentPage = nextPage;
+        this.suppressClickUntil = Date.now() + 350;
+        this.renderGrid();
+    },
     
     // 통계 업데이트
     updateDashboard() {
         let totalCount = 0; // 전체 인원 (이름이 입력된 사람)
         let attendanceCount = 0; // 참석 인원 (상태 1 - 빨강)
         
-        for (let i = 0; i < this.maxCells; i++) {
+        for (let i = 0; i < this.attendees.length; i++) {
             if (this.attendees[i]) {
                 totalCount++;
                 const state = this.states[i] || 0;
@@ -251,6 +275,7 @@ const AppState = {
     renderGrid() {
         const grid = document.getElementById('attendeesGrid');
         grid.innerHTML = '';
+        this.clampCurrentPage();
         
         // 세로 순서로 채우기: 3열 10행 그리드에서 세로 방향으로
         // 첫 번째 열: 0, 10, 20, ..., 27
@@ -262,7 +287,7 @@ const AppState = {
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
                 // 세로 순서로 데이터 인덱스 계산: col * rows + row
-                const dataIndex = col * rows + row;
+                const dataIndex = this.currentPage * this.maxCells + col * rows + row;
                 
                 const cell = document.createElement('div');
                 cell.className = 'attendee-cell';
@@ -288,17 +313,19 @@ const AppState = {
         
         // 대시보드 업데이트
         this.updateDashboard();
+        this.updatePageIndicator();
     },
     
     // 셀 클릭 핸들러
     handleCellClick(index) {
+        if (Date.now() < this.suppressClickUntil) {
+            return;
+        }
+
         // 빈 셀은 클릭해도 반응 없음
         if (!this.attendees[index]) {
             return;
         }
-        
-        // 현재 상태를 이력에 저장 (되돌리기용)
-        this.saveToHistory();
         
         const currentState = this.states[index] || 0;
         
@@ -314,9 +341,6 @@ const AppState = {
             nextState = 'x';
         } else if (currentState === 'x') {
             nextState = 0;
-        } else {
-            // 예상치 못한 값이면 0으로 복귀
-            nextState = 0;
         }
         
         this.states[index] = nextState;
@@ -328,37 +352,23 @@ const AppState = {
     
     // 참석자 입력
     setAttendees(names) {
-        // 이전 상태를 이력에 저장 (되돌리기용)
-        this.saveToHistory();
-        
-        // 입력받은 이름들을 분리
-        const rawNames = names
+        // 입력받은 이름들을 배열로 변환
+        const nameArray = names
             .split(',')
             .map(name => name.trim())
-            .filter(name => name.length > 0);
+            .filter(name => name.length > 0 && name.length <= 4); // 4글자 제한
         
-        // 4글자 초과 이름은 제외하고, 제외된 이름이 있으면 사용자에게 안내
-        const validNames = rawNames.filter(name => name.length <= 4);
-        const droppedNames = rawNames.filter(name => name.length > 4);
-        if (droppedNames.length > 0) {
-            alert(`다음 이름은 4글자를 초과하여 제외되었습니다:\n${droppedNames.join(', ')}`);
+        const nextStates = {};
+
+        // 이름들을 전체 목록에 채워넣기
+        for (let i = 0; i < nameArray.length; i++) {
+            nextStates[i] = this.states[i] || 0;
         }
-        
-        // 30개 셀에 맞춰 이름과 상태 모두 완전히 초기화
-        // (이전 사람의 상태가 새 사람에게 남는 문제 방지)
-        this.attendees = Array(this.maxCells).fill('');
-        this.states = {};
-        for (let i = 0; i < this.maxCells; i++) {
-            this.states[i] = 0;
-        }
-        
-        // 이름들을 채워넣기
-        for (let i = 0; i < Math.min(validNames.length, this.maxCells); i++) {
-            this.attendees[i] = validNames[i];
-        }
-        
+
+        this.attendees = nameArray;
+        this.states = nextStates;
+        this.clampCurrentPage();
         this.saveToStorage();
-        this.updateDashboard();
         this.renderGrid();
     },
     
@@ -394,10 +404,10 @@ const AppState = {
         // 현재 상태를 이력에 저장
         this.saveToHistory();
         
-        // 모든 셀의 상태를 0으로 초기화 (잔여 데이터 포함)
-        this.states = {};
-        for (let i = 0; i < this.maxCells; i++) {
-            this.states[i] = 0;
+        for (let i = 0; i < this.attendees.length; i++) {
+            if (this.attendees[i]) {
+                this.states[i] = 0;
+            }
         }
         this.saveToStorage();
         this.updateDashboard();
@@ -410,11 +420,9 @@ const AppState = {
         this.saveToHistory();
         
         // 모든 참석자와 상태 초기화
-        this.attendees = Array(this.maxCells).fill('');
+        this.attendees = [];
         this.states = {};
-        for (let i = 0; i < this.maxCells; i++) {
-            this.states[i] = 0;
-        }
+        this.currentPage = 0;
         this.saveToStorage();
         this.updateDashboard();
         this.renderGrid();
@@ -422,9 +430,6 @@ const AppState = {
     
     // 가나다 순 정렬
     sortByName() {
-        // 현재 상태를 이력에 저장 (되돌리기용)
-        this.saveToHistory();
-        
         // 이름과 인덱스를 함께 저장
         const nameWithIndex = this.attendees
             .map((name, index) => ({
@@ -440,23 +445,47 @@ const AppState = {
         });
         
         // 정렬된 순서로 배열 재구성
-        const newAttendees = Array(this.maxCells).fill('');
+        const newAttendees = [];
         const newStates = {};
         
-        for (let i = 0; i < this.maxCells; i++) {
-            if (i < nameWithIndex.length) {
-                newAttendees[i] = nameWithIndex[i].name;
-                newStates[i] = nameWithIndex[i].state;
-            } else {
-                newAttendees[i] = '';
-                newStates[i] = 0;
-            }
+        for (let i = 0; i < nameWithIndex.length; i++) {
+            newAttendees[i] = nameWithIndex[i].name;
+            newStates[i] = nameWithIndex[i].state;
         }
         
         this.attendees = newAttendees;
         this.states = newStates;
+        this.currentPage = 0;
         this.saveToStorage();
         this.renderGrid();
+    },
+
+    // 좌우 드래그/스와이프로 페이지 이동
+    setupSwipeNavigation() {
+        const mainContent = document.querySelector('.main-content');
+        if (!mainContent) return;
+
+        mainContent.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('.modal')) return;
+
+            this.swipeStartX = e.clientX;
+            this.swipeStartY = e.clientY;
+            this.swipeStartTime = Date.now();
+            mainContent.setPointerCapture?.(e.pointerId);
+        });
+
+        mainContent.addEventListener('pointerup', (e) => {
+            const deltaX = e.clientX - this.swipeStartX;
+            const deltaY = e.clientY - this.swipeStartY;
+            const elapsed = Date.now() - this.swipeStartTime;
+            const isHorizontalSwipe = Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4 && elapsed < 900;
+
+            if (!isHorizontalSwipe) {
+                return;
+            }
+
+            this.changePage(deltaX < 0 ? 1 : -1);
+        });
     },
     
     // 이벤트 리스너 설정
@@ -485,14 +514,8 @@ const AppState = {
         document.getElementById('undoBtn').addEventListener('click', () => {
             this.undo();
         });
-        
-        // 강아지 아이콘 클릭 시 짖는 소리/애니메이션 재생
-        const dogIcon = document.getElementById('dogIcon');
-        if (dogIcon) {
-            dogIcon.addEventListener('click', () => {
-                this.playBarkSound();
-            });
-        }
+
+        this.setupSwipeNavigation();
         
         // 모달 관련
         const modal = document.getElementById('editModal');
@@ -550,17 +573,13 @@ const AppState = {
         const names = input.value.trim();
         
         if (names) {
-            this.setAttendees(names); // setAttendees가 내부적으로 saveToHistory 호출
+            this.setAttendees(names);
         } else {
             // 빈 값이면 모든 참석자 제거
-            this.saveToHistory();
-            this.attendees = Array(this.maxCells).fill('');
+            this.attendees = [];
             this.states = {};
-            for (let i = 0; i < this.maxCells; i++) {
-                this.states[i] = 0;
-            }
+            this.currentPage = 0;
             this.saveToStorage();
-            this.updateDashboard();
             this.renderGrid();
         }
         
@@ -587,17 +606,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 터치 이벤트 최적화 (모바일)
 let touchStartTime = 0;
-let lastTouchY = 0;
 document.addEventListener('touchstart', (e) => {
     touchStartTime = Date.now();
-    // 시작점에서 lastTouchY를 초기화해야 첫 touchmove가
-    // 0 기준으로 비교돼서 무조건 preventDefault되는 버그를 방지
-    if (e.touches && e.touches[0]) {
-        lastTouchY = e.touches[0].clientY;
-    }
+    lastTouchY = e.touches[0].clientY;
 }, { passive: true });
 
 // 스크롤 방지 (모바일에서 스크롤이 의도치 않게 발생하는 것 방지)
+let lastTouchY = 0;
 document.addEventListener('touchmove', (e) => {
     const touchY = e.touches[0].clientY;
     const touchTarget = e.target;
