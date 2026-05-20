@@ -604,21 +604,18 @@ const AppState = {
         const names = this.extractNamesFromRows(rows);
 
         if (names.length === 0) {
-            alert('파일에서 4글자 이하의 이름을 찾지 못했습니다. 이름이 들어있는 열을 확인해주세요.');
+            alert('파일에서 이름을 찾지 못했습니다. 이름이 들어있는 열을 확인해주세요.');
             return;
         }
 
-        this.saveToHistory();
-        this.currentPage = 0;
-        this.setAttendees(names.join(','));
         const attendeesInput = document.getElementById('attendeesInput');
         if (attendeesInput) {
             attendeesInput.value = names.join(', ');
+            attendeesInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
-        this.closeEditModal();
-        alert('불러오기 완료: ' + names.length + '명');
-    },
 
+        alert('엑셀에서 ' + names.length + '명을 불러왔습니다. 저장을 누르면 화면에 반영됩니다.');
+    },
     extractNamesFromRows(rows) {
         const normalizedRows = rows
             .filter(row => Array.isArray(row))
