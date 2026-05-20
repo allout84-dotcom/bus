@@ -463,7 +463,6 @@ const AppState = {
 
     // 엑셀/CSV 파일 선택창 열기
     // 주의: 이 함수는 반드시 동기적으로 호출되어야 함 (모바일에서 user gesture 유지)
-    // async/await로 감싸거나 showOpenFilePicker를 사용하면 갤럭시 등에서 파일창이 안 뜸
     openExcelPicker(input) {
         if (!input) return;
         try {
@@ -484,7 +483,19 @@ const AppState = {
 
     handleImportedFile(file, input) {
         const fileName = file.name.toLowerCase();
-        if (fileName.endsWith('.csv')) {
+
+        // 확장자 검증: accept 속성을 제거했기 때문에 JS에서 직접 검사
+        // (Galaxy 등 일부 안드로이드에서 사진/동영상도 선택 가능하므로)
+        const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+        const isCsv = fileName.endsWith('.csv');
+
+        if (!isExcel && !isCsv) {
+            alert('엑셀 파일(.xlsx, .xls) 또는 CSV 파일(.csv)만 업로드 가능합니다.\n선택한 파일: ' + file.name);
+            if (input) input.value = '';
+            return;
+        }
+
+        if (isCsv) {
             this.readCsvFile(file, input);
             return;
         }
