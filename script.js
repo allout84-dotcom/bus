@@ -461,31 +461,17 @@ const AppState = {
     },
 
 
-    // 엑셀/CSV 파일에서 참석자 명단 가져오기
-    async openExcelPicker(input) {
-        if (window.showOpenFilePicker) {
-            try {
-                const [handle] = await window.showOpenFilePicker({
-                    multiple: false,
-                    excludeAcceptAllOption: true,
-                    types: [{
-                        description: '엑셀 파일',
-                        accept: {
-                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-                            'application/vnd.ms-excel': ['.xls'],
-                            'text/csv': ['.csv']
-                        }
-                    }]
-                });
-                const file = await handle.getFile();
-                this.handleImportedFile(file, input);
-                return;
-            } catch (error) {
-                if (error.name === 'AbortError') return;
-            }
+    // 엑셀/CSV 파일 선택창 열기
+    // 주의: 이 함수는 반드시 동기적으로 호출되어야 함 (모바일에서 user gesture 유지)
+    // async/await로 감싸거나 showOpenFilePicker를 사용하면 갤럭시 등에서 파일창이 안 뜸
+    openExcelPicker(input) {
+        if (!input) return;
+        try {
+            input.click();
+        } catch (e) {
+            console.error('파일 선택을 열 수 없습니다.', e);
+            alert('파일 선택창을 열 수 없습니다. 다시 시도해주세요.');
         }
-
-        input.click();
     },
 
     handleExcelFile(event) {
@@ -517,21 +503,29 @@ const AppState = {
         reader.readAsArrayBuffer(file);
     },
     getBestWorkbookRows(workbook) {
-        let bestRows = [];
-        let bestCount = -1;
+        // 기본은 첫 번째 시트. 첫 시트에서 A열 명단을 못 찾으면 다른 시트들 시도.
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            return [];
+        }
 
-        workbook.SheetNames.forEach((sheetName) => {
+        const readSheet = (sheetName) => {
             const worksheet = workbook.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false, blankrows: false });
-            const count = this.extractNamesFromRows(rows).length;
+            return XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false, blankrows: false });
+        };
 
-            if (count > bestCount) {
-                bestRows = rows;
-                bestCount = count;
+        const firstRows = readSheet(workbook.SheetNames[0]);
+        if (this.extractNamesFromRows(firstRows).length > 0) {
+            return firstRows;
+        }
+
+        for (let i = 1; i < workbook.SheetNames.length; i++) {
+            const rows = readSheet(workbook.SheetNames[i]);
+            if (this.extractNamesFromRows(rows).length > 0) {
+                return rows;
             }
-        });
+        }
 
-        return bestRows;
+        return firstRows;
     },
     async readWorkbookRows(buffer) {
         if (typeof XLSX !== 'undefined') {
@@ -557,22 +551,23 @@ const AppState = {
         }
 
         const sheets = this.readWorkbookSheets(workbookXml, relsXml);
-        let bestRows = [];
-        let bestCount = -1;
+        if (sheets.length === 0) return [];
 
-        for (const sheet of sheets) {
-            const xml = entries[sheet.path];
+        // 첫 시트 우선, 비어있을 때만 다음 시트 시도
+        let firstRows = [];
+        for (let i = 0; i < sheets.length; i++) {
+            const xml = entries[sheets[i].path];
             if (!xml) continue;
 
             const rows = this.readWorksheetRows(xml, sharedStrings);
-            const count = this.extractNamesFromRows(rows).length;
-            if (count > bestCount) {
-                bestRows = rows;
-                bestCount = count;
+            if (i === 0) firstRows = rows;
+
+            if (this.extractNamesFromRows(rows).length > 0) {
+                return rows;
             }
         }
 
-        return bestRows;
+        return firstRows;
     },
 
     async readZipEntries(buffer) {
@@ -788,7 +783,7 @@ const AppState = {
         const names = this.extractNamesFromRows(rows);
 
         if (names.length === 0) {
-            alert('파일에서 이름을 찾지 못했습니다. 이름이 들어있는 열을 확인해주세요.');
+            alert('A열에서 이름을 찾지 못했습니다.\nA열 첫 번째부터 이름이 순서대로 입력되어 있는지 확인해주세요.');
             return;
         }
 
@@ -798,46 +793,52 @@ const AppState = {
             attendeesInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        alert('엑셀에서 ' + names.length + '명을 불러왔습니다. 저장을 누르면 화면에 반영됩니다.');
+        alert('엑셀 A열에서 ' + names.length + '명을 불러왔습니다.\n저장을 누르면 화면에 반영됩니다.');
     },
     extractNamesFromRows(rows) {
-        const normalizedRows = rows
-            .filter(row => Array.isArray(row))
-            .map(row => row.map(value => this.normalizeImportedName(value)));
-        const maxColumns = normalizedRows.reduce((max, row) => Math.max(max, row.length), 0);
-        let bestNames = [];
+        // A열(첫 번째 열)만 위에서부터 순서대로 읽어옴.
+        // 첫 행이 헤더 단어("이름", "성명" 등)면 건너뜀.
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return [];
+        }
 
-        for (let col = 0; col < maxColumns; col++) {
-            const columnNames = normalizedRows
-                .map(row => row[col] || '')
-                .filter(name => this.isImportableName(name));
+        const names = [];
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!Array.isArray(row)) continue;
 
-            if (columnNames.length > bestNames.length) {
-                bestNames = columnNames;
+            const value = this.normalizeImportedName(row[0]);
+            if (!value) continue; // 빈 셀은 건너뜀 (중간 공백 행 허용)
+
+            // 첫 행이 헤더면 스킵
+            if (i === 0 && this.isHeaderWord(value)) continue;
+
+            if (this.isImportableName(value)) {
+                names.push(value);
             }
         }
 
-        if (bestNames.length > 0) {
-            return bestNames;
-        }
-
-        return normalizedRows
-            .flat()
-            .filter(name => this.isImportableName(name));
+        return names;
     },
 
     normalizeImportedName(value) {
         return String(value ?? '').trim();
     },
 
-    isImportableName(name) {
-        const headerWords = ['\uC774\uB984', '\uC131\uBA85', '\uCC38\uC11D\uC790', '\uD0D1\uC2B9\uC790', '\uBA85\uB2E8', '\uBC88\uD638', '\uC21C\uBC88', '\uC5F0\uBC88', 'no', 'name', 'names', 'student', 'person'];
-        const normalized = name.toLowerCase();
+    isHeaderWord(name) {
+        const headerWords = [
+            '이름', '성명', '참석자', '탑승자', '명단',
+            '번호', '순번', '연번', '구분',
+            'no', 'name', 'names', 'student', 'person'
+        ];
+        return headerWords.includes(name.toLowerCase());
+    },
 
+    isImportableName(name) {
+        // 1~4글자, 순수 숫자가 아닌 값만 허용
         return name.length > 0
             && name.length <= 4
-            && !/^\d+$/.test(name)
-            && !headerWords.includes(normalized);
+            && !/^\d+$/.test(name);
     },
     // 좌우 드래그/스와이프로 페이지 이동
     setupSwipeNavigation() {
@@ -875,10 +876,12 @@ const AppState = {
         });
 
         // 엑셀 업로드 버튼
+        // 주의: input.click()은 반드시 click 이벤트 핸들러에서 동기적으로 호출되어야
+        // 모바일(특히 갤럭시 삼성 인터넷)에서 파일 선택창이 정상적으로 뜸
         const excelUploadBtn = document.getElementById('excelUploadBtn');
         const excelFileInput = document.getElementById('excelFileInput');
         excelUploadBtn.addEventListener('click', () => {
-            this.openExcelPicker(excelFileInput);
+            excelFileInput.click();
         });
         excelFileInput.addEventListener('change', (e) => {
             this.handleExcelFile(e);
