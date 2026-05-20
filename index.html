@@ -34,6 +34,16 @@
                     <span class="btn-icon">✏️</span>
                     참석자 입력
                 </button>
+                <button class="menu-btn" id="excelUploadBtn">
+                    <span class="btn-icon">📄</span>
+                    엑셀 업로드
+                </button>
+                <input
+                    type="file"
+                    id="excelFileInput"
+                    class="file-input"
+                    accept=".xlsx,.xls,.csv"
+                >
                 <button class="menu-btn" id="sortBtn">
                     <span class="btn-icon">🔤</span>
                     가나다 순 정렬
@@ -86,6 +96,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

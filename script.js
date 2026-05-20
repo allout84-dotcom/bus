@@ -460,6 +460,155 @@ const AppState = {
         this.renderGrid();
     },
 
+
+    // 엑셀/CSV 파일에서 참석자 명단 가져오기
+    handleExcelFile(event) {
+        const input = event.target;
+        const file = input.files && input.files[0];
+        if (!file) return;
+
+        const fileName = file.name.toLowerCase();
+        if (fileName.endsWith('.csv')) {
+            this.readCsvFile(file, input);
+            return;
+        }
+
+        if (typeof XLSX === 'undefined') {
+            alert('엑셀 업로드 기능을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.');
+            input.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const workbook = XLSX.read(e.target.result, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                this.importNamesFromRows(rows, file.name);
+            } catch (error) {
+                console.error(error);
+                alert('엑셀 파일을 읽지 못했습니다. 파일 형식을 확인해주세요.');
+            } finally {
+                input.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    },
+
+    readCsvFile(file, input) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const buffer = e.target.result;
+                let text;
+                try {
+                    text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+                } catch (_) {
+                    text = new TextDecoder('euc-kr').decode(buffer);
+                }
+
+                this.importNamesFromRows(this.parseCsvRows(text), file.name);
+            } catch (error) {
+                console.error(error);
+                alert('CSV 파일을 읽지 못했습니다. 파일 형식을 확인해주세요.');
+            } finally {
+                input.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    },
+
+    parseCsvRows(text) {
+        const rows = [];
+        let row = [];
+        let cell = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const nextChar = text[i + 1];
+
+            if (char === '"') {
+                if (inQuotes && nextChar === '"') {
+                    cell += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (char === ',' && !inQuotes) {
+                row.push(cell);
+                cell = '';
+            } else if ((char === '\n' || char === '\r') && !inQuotes) {
+                if (char === '\r' && nextChar === '\n') i++;
+                row.push(cell);
+                rows.push(row);
+                row = [];
+                cell = '';
+            } else {
+                cell += char;
+            }
+        }
+
+        row.push(cell);
+        rows.push(row);
+        return rows;
+    },
+
+    importNamesFromRows(rows, fileName) {
+        const names = this.extractNamesFromRows(rows);
+
+        if (names.length === 0) {
+            alert('파일에서 4글자 이하의 이름을 찾지 못했습니다. 이름이 들어있는 열을 확인해주세요.');
+            return;
+        }
+
+        this.saveToHistory();
+        this.currentPage = 0;
+        this.setAttendees(names.join(','));
+        alert(`${fileName}에서 ${names.length}명을 불러왔습니다.`);
+    },
+
+    extractNamesFromRows(rows) {
+        const normalizedRows = rows
+            .filter(row => Array.isArray(row))
+            .map(row => row.map(value => this.normalizeImportedName(value)));
+        const maxColumns = normalizedRows.reduce((max, row) => Math.max(max, row.length), 0);
+        let bestNames = [];
+
+        for (let col = 0; col < maxColumns; col++) {
+            const columnNames = normalizedRows
+                .map(row => row[col] || '')
+                .filter(name => this.isImportableName(name));
+
+            if (columnNames.length > bestNames.length) {
+                bestNames = columnNames;
+            }
+        }
+
+        if (bestNames.length > 0) {
+            return bestNames;
+        }
+
+        return normalizedRows
+            .flat()
+            .filter(name => this.isImportableName(name));
+    },
+
+    normalizeImportedName(value) {
+        return String(value ?? '').trim();
+    },
+
+    isImportableName(name) {
+        const headerWords = ['이름', '성명', '참석자', '탑승자', '명단', '번호', '순번', '연번', 'no', 'name', 'names', 'student', 'person'];
+        const normalized = name.toLowerCase();
+
+        return name.length > 0
+            && name.length <= 4
+            && !/^\d+$/.test(name)
+            && !headerWords.includes(normalized);
+    },
     // 좌우 드래그/스와이프로 페이지 이동
     setupSwipeNavigation() {
         const mainContent = document.querySelector('.main-content');
@@ -493,6 +642,16 @@ const AppState = {
         // 참석자 입력 버튼
         document.getElementById('editAttendeesBtn').addEventListener('click', () => {
             this.openEditModal();
+        });
+
+        // 엑셀 업로드 버튼
+        const excelUploadBtn = document.getElementById('excelUploadBtn');
+        const excelFileInput = document.getElementById('excelFileInput');
+        excelUploadBtn.addEventListener('click', () => {
+            excelFileInput.click();
+        });
+        excelFileInput.addEventListener('change', (e) => {
+            this.handleExcelFile(e);
         });
         
         // 가나다 순 정렬 버튼

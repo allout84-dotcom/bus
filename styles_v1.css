@@ -188,6 +188,10 @@ body {
     font-size: 1rem;
 }
 
+.file-input {
+    display: none;
+}
+
 /* 메인 컨텐츠 */
 .main-content {
     flex: 1;
