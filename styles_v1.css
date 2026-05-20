@@ -98,6 +98,19 @@ body {
     transform: scale(1.1);
 }
 
+.app-version {
+    position: absolute;
+    right: -0.2rem;
+    bottom: -0.35rem;
+    color: rgba(255, 255, 255, 0.38);
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 .dog-icon.bark-animation {
     animation: bark 0.4s ease;
 }
