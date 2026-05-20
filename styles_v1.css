@@ -202,7 +202,18 @@ body {
 }
 
 .file-input {
-    display: none;
+    /* display:none으로 두면 일부 모바일 브라우저(삼성 인터넷 등)에서
+       input.click()이 무시됨. 시각적으로만 숨기고 DOM에는 남겨두는 방식 사용. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    clip: rect(0 0 0 0);
+    border: 0;
+    padding: 0;
+    margin: -1px;
 }
 
 /* 메인 컨텐츠 */
@@ -627,7 +638,3 @@ body {
         font-size: clamp(1.4rem, 4vw, 1.9rem);
     }
 }
-
-
-
-
