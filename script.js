@@ -462,11 +462,41 @@ const AppState = {
 
 
     // 엑셀/CSV 파일에서 참석자 명단 가져오기
+    async openExcelPicker(input) {
+        if (window.showOpenFilePicker) {
+            try {
+                const [handle] = await window.showOpenFilePicker({
+                    multiple: false,
+                    excludeAcceptAllOption: true,
+                    types: [{
+                        description: '엑셀 파일',
+                        accept: {
+                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+                            'application/vnd.ms-excel': ['.xls'],
+                            'text/csv': ['.csv']
+                        }
+                    }]
+                });
+                const file = await handle.getFile();
+                this.handleImportedFile(file, input);
+                return;
+            } catch (error) {
+                if (error.name === 'AbortError') return;
+            }
+        }
+
+        input.click();
+    },
+
     handleExcelFile(event) {
         const input = event.target;
         const file = input.files && input.files[0];
         if (!file) return;
 
+        this.handleImportedFile(file, input);
+    },
+
+    handleImportedFile(file, input) {
         const fileName = file.name.toLowerCase();
         if (fileName.endsWith('.csv')) {
             this.readCsvFile(file, input);
@@ -475,7 +505,7 @@ const AppState = {
 
         if (typeof XLSX === 'undefined') {
             alert('엑셀 업로드 기능을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.');
-            input.value = '';
+            if (input) input.value = '';
             return;
         }
 
@@ -491,7 +521,7 @@ const AppState = {
                 console.error(error);
                 alert('엑셀 파일을 읽지 못했습니다. 파일 형식을 확인해주세요.');
             } finally {
-                input.value = '';
+                if (input) input.value = '';
             }
         };
         reader.readAsArrayBuffer(file);
@@ -648,7 +678,7 @@ const AppState = {
         const excelUploadBtn = document.getElementById('excelUploadBtn');
         const excelFileInput = document.getElementById('excelFileInput');
         excelUploadBtn.addEventListener('click', () => {
-            excelFileInput.click();
+            this.openExcelPicker(excelFileInput);
         });
         excelFileInput.addEventListener('change', (e) => {
             this.handleExcelFile(e);
