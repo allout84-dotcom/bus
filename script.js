@@ -502,18 +502,10 @@ const AppState = {
             this.readCsvFile(file, input);
             return;
         }
-
-        if (typeof XLSX === 'undefined') {
-            alert('엑셀 업로드 기능을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.');
-            if (input) input.value = '';
-            return;
-        }
-
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
-                const workbook = XLSX.read(e.target.result, { type: 'array' });
-                const rows = this.getBestWorkbookRows(workbook);
+                const rows = await this.readWorkbookRows(e.target.result);
                 this.importNamesFromRows(rows, file.name);
             } catch (error) {
                 console.error(error);
@@ -540,6 +532,198 @@ const AppState = {
         });
 
         return bestRows;
+    },
+    async readWorkbookRows(buffer) {
+        if (typeof XLSX !== 'undefined') {
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            return this.getBestWorkbookRows(workbook);
+        }
+
+        if (!window.DecompressionStream) {
+            throw new Error('Excel parser is not available in this browser.');
+        }
+
+        return this.readXlsxRowsWithoutLibrary(buffer);
+    },
+
+    async readXlsxRowsWithoutLibrary(buffer) {
+        const entries = await this.readZipEntries(buffer);
+        const sharedStrings = this.readSharedStrings(entries['xl/sharedStrings.xml'] || '');
+        const workbookXml = entries['xl/workbook.xml'];
+        const relsXml = entries['xl/_rels/workbook.xml.rels'];
+
+        if (!workbookXml || !relsXml) {
+            throw new Error('Invalid xlsx workbook.');
+        }
+
+        const sheets = this.readWorkbookSheets(workbookXml, relsXml);
+        let bestRows = [];
+        let bestCount = -1;
+
+        for (const sheet of sheets) {
+            const xml = entries[sheet.path];
+            if (!xml) continue;
+
+            const rows = this.readWorksheetRows(xml, sharedStrings);
+            const count = this.extractNamesFromRows(rows).length;
+            if (count > bestCount) {
+                bestRows = rows;
+                bestCount = count;
+            }
+        }
+
+        return bestRows;
+    },
+
+    async readZipEntries(buffer) {
+        const bytes = new Uint8Array(buffer);
+        const view = new DataView(buffer);
+        const decoder = new TextDecoder('utf-8');
+        let eocdOffset = -1;
+
+        for (let i = bytes.length - 22; i >= 0; i--) {
+            if (view.getUint32(i, true) === 0x06054b50) {
+                eocdOffset = i;
+                break;
+            }
+        }
+
+        if (eocdOffset < 0) throw new Error('Zip directory not found.');
+
+        const entryCount = view.getUint16(eocdOffset + 10, true);
+        let centralOffset = view.getUint32(eocdOffset + 16, true);
+        const entries = {};
+
+        for (let i = 0; i < entryCount; i++) {
+            if (view.getUint32(centralOffset, true) !== 0x02014b50) break;
+
+            const method = view.getUint16(centralOffset + 10, true);
+            const compressedSize = view.getUint32(centralOffset + 20, true);
+            const fileNameLength = view.getUint16(centralOffset + 28, true);
+            const extraLength = view.getUint16(centralOffset + 30, true);
+            const commentLength = view.getUint16(centralOffset + 32, true);
+            const localHeaderOffset = view.getUint32(centralOffset + 42, true);
+            const fileNameBytes = bytes.slice(centralOffset + 46, centralOffset + 46 + fileNameLength);
+            const fileName = decoder.decode(fileNameBytes).replace(/\\/g, '/');
+
+            if (fileName.endsWith('.xml') || fileName.endsWith('.rels')) {
+                const localNameLength = view.getUint16(localHeaderOffset + 26, true);
+                const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
+                const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+                const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+                entries[fileName] = await this.inflateZipText(compressed, method);
+            }
+
+            centralOffset += 46 + fileNameLength + extraLength + commentLength;
+        }
+
+        return entries;
+    },
+
+    async inflateZipText(bytes, method) {
+        if (method === 0) {
+            return new TextDecoder('utf-8').decode(bytes);
+        }
+
+        if (method !== 8) {
+            throw new Error('Unsupported zip compression.');
+        }
+
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = await new Response(stream).arrayBuffer();
+        return new TextDecoder('utf-8').decode(inflated);
+    },
+
+    xmlDecode(value) {
+        return String(value || '')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&amp;/g, '&');
+    },
+
+    getXmlAttr(tag, name) {
+        const match = tag.match(new RegExp('(?:^|\\s)' + name.replace(':', '\\:') + '="([^"]*)"'));
+        return match ? this.xmlDecode(match[1]) : '';
+    },
+
+    readSharedStrings(xml) {
+        if (!xml) return [];
+
+        return Array.from(xml.matchAll(/<si\b[\s\S]*?<\/si>/g)).map((match) => {
+            return Array.from(match[0].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g))
+                .map(textMatch => this.xmlDecode(textMatch[1]))
+                .join('');
+        });
+    },
+
+    readWorkbookSheets(workbookXml, relsXml) {
+        const rels = {};
+        Array.from(relsXml.matchAll(/<Relationship\b[^>]*>/g)).forEach((match) => {
+            const id = this.getXmlAttr(match[0], 'Id');
+            const target = this.getXmlAttr(match[0], 'Target');
+            rels[id] = this.resolveZipPath('xl/workbook.xml', target);
+        });
+
+        return Array.from(workbookXml.matchAll(/<sheet\b[^>]*>/g)).map((match) => {
+            const relId = this.getXmlAttr(match[0], 'r:id') || this.getXmlAttr(match[0], 'id');
+            return { name: this.getXmlAttr(match[0], 'name'), path: rels[relId] };
+        }).filter(sheet => sheet.path);
+    },
+
+    resolveZipPath(basePath, target) {
+        if (!target) return '';
+        if (target.startsWith('/')) return target.slice(1);
+
+        const baseParts = basePath.split('/');
+        baseParts.pop();
+        target.split('/').forEach((part) => {
+            if (!part || part === '.') return;
+            if (part === '..') baseParts.pop();
+            else baseParts.push(part);
+        });
+        return baseParts.join('/');
+    },
+
+    readWorksheetRows(xml, sharedStrings) {
+        const rows = [];
+
+        Array.from(xml.matchAll(/<row\b[^>]*>[\s\S]*?<\/row>/g)).forEach((rowMatch) => {
+            const rowXml = rowMatch[0];
+            const row = [];
+
+            Array.from(rowXml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)).forEach((cellMatch) => {
+                const cellTag = cellMatch[1];
+                const cellBody = cellMatch[2];
+                const cellRef = this.getXmlAttr(cellTag, 'r');
+                const colIndex = this.excelColumnIndex(cellRef.replace(/\d+/g, ''));
+                const type = this.getXmlAttr(cellTag, 't');
+                const valueMatch = cellBody.match(/<v\b[^>]*>([\s\S]*?)<\/v>/);
+                let value = valueMatch ? this.xmlDecode(valueMatch[1]) : '';
+
+                if (type === 's') {
+                    value = sharedStrings[Number(value)] || '';
+                } else if (type === 'inlineStr') {
+                    value = Array.from(cellBody.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g))
+                        .map(textMatch => this.xmlDecode(textMatch[1]))
+                        .join('');
+                }
+
+                row[colIndex] = value;
+            });
+            rows.push(row);
+        });
+
+        return rows;
+    },
+
+    excelColumnIndex(columnName) {
+        let index = 0;
+        for (let i = 0; i < columnName.length; i++) {
+            index = index * 26 + columnName.charCodeAt(i) - 64;
+        }
+        return Math.max(index - 1, 0);
     },
     readCsvFile(file, input) {
         const reader = new FileReader();
