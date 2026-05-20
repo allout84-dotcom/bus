@@ -513,9 +513,7 @@ const AppState = {
         reader.onload = (e) => {
             try {
                 const workbook = XLSX.read(e.target.result, { type: 'array' });
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                const rows = this.getBestWorkbookRows(workbook);
                 this.importNamesFromRows(rows, file.name);
             } catch (error) {
                 console.error(error);
@@ -526,7 +524,23 @@ const AppState = {
         };
         reader.readAsArrayBuffer(file);
     },
+    getBestWorkbookRows(workbook) {
+        let bestRows = [];
+        let bestCount = -1;
 
+        workbook.SheetNames.forEach((sheetName) => {
+            const worksheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false, blankrows: false });
+            const count = this.extractNamesFromRows(rows).length;
+
+            if (count > bestCount) {
+                bestRows = rows;
+                bestCount = count;
+            }
+        });
+
+        return bestRows;
+    },
     readCsvFile(file, input) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -597,7 +611,12 @@ const AppState = {
         this.saveToHistory();
         this.currentPage = 0;
         this.setAttendees(names.join(','));
-        alert(`${fileName}에서 ${names.length}명을 불러왔습니다.`);
+        const attendeesInput = document.getElementById('attendeesInput');
+        if (attendeesInput) {
+            attendeesInput.value = names.join(', ');
+        }
+        this.closeEditModal();
+        alert('불러오기 완료: ' + names.length + '명');
     },
 
     extractNamesFromRows(rows) {
@@ -631,7 +650,7 @@ const AppState = {
     },
 
     isImportableName(name) {
-        const headerWords = ['이름', '성명', '참석자', '탑승자', '명단', '번호', '순번', '연번', 'no', 'name', 'names', 'student', 'person'];
+        const headerWords = ['\uC774\uB984', '\uC131\uBA85', '\uCC38\uC11D\uC790', '\uD0D1\uC2B9\uC790', '\uBA85\uB2E8', '\uBC88\uD638', '\uC21C\uBC88', '\uC5F0\uBC88', 'no', 'name', 'names', 'student', 'person'];
         const normalized = name.toLowerCase();
 
         return name.length > 0

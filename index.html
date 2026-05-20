@@ -34,16 +34,7 @@
                     <span class="btn-icon">✏️</span>
                     참석자 입력
                 </button>
-                <button class="menu-btn" id="excelUploadBtn">
-                    <span class="btn-icon">📄</span>
-                    엑셀 업로드
-                </button>
-                <input
-                    type="file"
-                    id="excelFileInput"
-                    class="file-input"
-                    accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,.xlsx,.xls,.csv"
-                >
+
                 <button class="menu-btn" id="sortBtn">
                     <span class="btn-icon">🔤</span>
                     가나다 순 정렬
@@ -88,6 +79,19 @@
                     rows="5"
                 ></textarea>
                 <p class="help-text">예: 홍길동,김철수,이영희,박민수,최지영</p>
+                <div class="modal-upload-row">
+                    <button class="btn-upload" id="excelUploadBtn" type="button">
+                        <span class="btn-icon">📄</span>
+                        엑셀 파일 업로드
+                    </button>
+                    <span class="upload-hint">.xlsx, .xls, .csv</span>
+                </div>
+                <input
+                    type="file"
+                    id="excelFileInput"
+                    class="file-input"
+                    accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,.xlsx,.xls,.csv"
+                >
                 <div class="modal-buttons">
                     <button class="btn-primary" id="saveAttendeesBtn">저장</button>
                     <button class="btn-secondary" id="cancelBtn">취소</button>
